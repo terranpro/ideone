@@ -46,7 +46,7 @@
 (defvar ideone-languages-alist nil
   "Assoc List of Supported Languages Returned from IDEOne API")
 
-(defvar-local ideone-submit-lang nil
+(defvar ideone-submit-lang nil
   "Buffer local variable to force submission using a certain type.
 Should set to a pattern like C++, C99, Scheme, Python, etc.")
 
@@ -182,6 +182,7 @@ the user to modify, with the remainder of the response
 fields (errors, output, time, etc.) in a commented region."
 
   (let* ((buffer "*IDEone*")
+	 (ideone-header-end "$$$IDEONE_HEADER_END$$$\n\n")
 	 (lang (ideone-value-from-presponse presponse "langName"))
 	 (lang-mode (or (aget ideone-lang-mode-alist lang)
 			nil))
@@ -200,6 +201,7 @@ fields (errors, output, time, etc.) in a commented region."
 	  (insert (format "Time: %s\n\nLang: %s\n\nCompiler Output:\n%s\n" 
 			  time lang cmpinfo))
 	  (insert (format "Input:\n%s\n\nOutput:\n%s\n\n" input output))
+	  (insert (format ideone-header-end))
 	  (setq comment-style 'indent)
 	  (comment-region startp (point) 2)
 	  (insert source)
@@ -322,13 +324,19 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
 
 (defun ideone-get-submission ()
   (interactive)
-  (let ((url (thing-at-point-url-at-point)))
+  (let ((url (thing-at-point-url-at-point))
+	(link))
     (if (null url)
 	(setq url (ido-completing-read "ideone url or id: "
 				       (mapcar '(lambda (c) (car c))
 					       ideone-recent-submissions))))
-    (ideone-submission-details (cond ((url-p url) (ideone-id-from-url url))
-				     (t url)))))
+    (with-temp-buffer
+      (insert url)
+      (if (null (thing-at-point-url-at-point))
+	  (setq link url)
+	(setq link (ideone-id-from-url url))))
+    (ideone-submission-details link)))
+
 (defun ideone-init ()
   (if (not (string=  (aget (ideone-parse-simple (ideone-invoke "testFunction"))
 			   "error")
