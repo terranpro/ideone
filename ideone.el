@@ -26,6 +26,12 @@
 ;; supported languages.  Can download from another user's ideone post.
 ;; Maintains a list of recently submitted posts, to review results,
 ;; redownload code, or share links easily.
+;; 
+;; To use, place in your .emacs or similar:
+;; (load-library "~/path/to/ideone.el")
+;; (setq ideone-user "ideone_id")
+;; (setq ideone-pass "ideone_api_pass")
+;; (ideone-init)
 
 ;;; Code:
 
@@ -35,8 +41,16 @@
 
 ;;(setq ideone-wsdl-url "http://ideone.com/api/1/service.wsdl")
 ;;(setq ideone-wsdl (soap-load-wsdl-from-url ideone-wsdl-url))
+(setq ideone-wsdl-file "ideone.wsdl")
+(setq ideone-wsdl-file-full (if load-in-progress
+				(format "%s/%s" 
+					(file-name-directory load-file-name)
+					ideone-wsdl-file)
+			      (format "%s/%s"
+				      (file-name-directory buffer-file-name)
+				      ideone-wsdl-file)))
 
-(setq ideone-wsdl (soap-load-wsdl "./ideone.wsdl"))
+(setq ideone-wsdl (soap-load-wsdl ideone-wsdl-file-full))
 
 (defvar ideone-user "test"
   "IDEone User ID")
@@ -64,6 +78,8 @@ Should set to a pattern like C++, C99, Scheme, Python, etc.")
     ("text" . text-mode))
   "Mapping of identifiers to their emacs mode.")
 
+(setq ideone-header-end "$$$IDEONE_HEADER_END$$$")
+
 (setq ideone-status-alist '((-1 . "waiting")
 			    ( 0 . "done")
 			    ( 1 . "compiling")
@@ -86,6 +102,7 @@ Should set to a pattern like C++, C99, Scheme, Python, etc.")
 			   (cannot_submit_this_month_anymore . "LIMIT")))
 
 (defun ideone-enable-debug ()
+  (setq debug-on-error t)
   (setq soap-debug t))
 ;;(ideone-enable-debug)
 
@@ -182,7 +199,6 @@ the user to modify, with the remainder of the response
 fields (errors, output, time, etc.) in a commented region."
 
   (let* ((buffer "*IDEone*")
-	 (ideone-header-end "$$$IDEONE_HEADER_END$$$\n\n")
 	 (lang (ideone-value-from-presponse presponse "langName"))
 	 (lang-mode (or (aget ideone-lang-mode-alist lang)
 			nil))
@@ -201,7 +217,7 @@ fields (errors, output, time, etc.) in a commented region."
 	  (insert (format "Time: %s\n\nLang: %s\n\nCompiler Output:\n%s\n" 
 			  time lang cmpinfo))
 	  (insert (format "Input:\n%s\n\nOutput:\n%s\n\n" input output))
-	  (insert (format ideone-header-end))
+	  (insert (format "%s\n\n" ideone-header-end))
 	  (setq comment-style 'indent)
 	  (comment-region startp (point) 2)
 	  (insert source)
@@ -255,12 +271,22 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
 
 (defun ideone-create-submission ()
   (interactive)
-  (let* ((beg (if (use-region-p)
-		  (region-beginning)
-		(point-min)))
-	 (end (if (use-region-p)
+  (let* ((end (if (use-region-p)
 		  (region-end)
 		(point-max)))
+	 (beg (if (use-region-p)
+		  (region-beginning)
+		(save-excursion
+		  (goto-char (point-min))
+		  (let ((begh (search-forward-regexp 
+			       (regexp-quote ideone-header-end) end t)))
+		    (if (null begh)
+			(point-min)
+		      (move-end-of-line nil)
+		      (forward-char 1)
+		      (if (search-forward-regexp "\\S-" end t)
+			  (backward-char 1))
+		      (point))))))
 	 (code (buffer-substring-no-properties beg end))
 	 (language (cond ((not (null ideone-submit-lang)) 
 			  (ideone-get-lang-code-from-string ideone-submit-lang))
@@ -276,6 +302,7 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
     (ideone-show-output result)
 
     (while (not (= (ideone-submission-status link) 0))
+      (message (format "Code:%s" code))
       (message "Waiting for compilation...")
       )
     (message "IDEone Submission at Link: %s" url)
@@ -344,19 +371,27 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
       (error "Auth Error"))
   (ideone-get-languages) t)
 
-(defun ideone-set-submission-lang (&optional lang)
-  (interactive "Mlang: ")
-  (setq ideone-submit-lang lang))
+(defun ideone-set-submission-lang ()
+  (interactive)
+  (setq ideone-submit-lang 
+	(ido-completing-read "Submission Language: " 
+			     (mapcar '(lambda (p) (car p)) 
+				     ideone-languages-alist))))
 
-(defun ideone-hook ()
-  (local-set-key (kbd "C-c I s") 'ideone-create-submission)
-  (local-set-key (kbd "C-c I l") 'ideone-set-submission-lang)
-  (local-set-key (kbd "C-c I g") 'ideone-get-submission)
-  ;; reserved for future
-  ;;(local-set-key (kbd "C-c I u") 'ideone-update-submission)
-  )
+;; (defun ideone-hook ()
+;;   (local-set-key (kbd "C-c I s") 'ideone-create-submission)
+;;   (local-set-key (kbd "C-c I l") 'ideone-set-submission-lang)
+;;   (local-set-key (kbd "C-c I g") 'ideone-get-submission)
+;;   ;; reserved for future
+;;   ;;(local-set-key (kbd "C-c I u") 'ideone-update-submission)
+;;   )
 
-(add-hook 'find-file-hook 'ideone-hook)
+;; (add-hook 'find-file-hook 'ideone-hook)
+;; (add-hook 'c-mode-common-hook 'ideone-hook)
+
+(global-set-key (kbd "C-c I s") 'ideone-create-submission)
+(global-set-key (kbd "C-c I l") 'ideone-set-submission-lang)
+(global-set-key (kbd "C-c I g") 'ideone-get-submission)
 
 (provide 'ideone)
 
