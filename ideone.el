@@ -68,18 +68,45 @@ Should set to a pattern like C++, C99, Scheme, Python, etc.")
   "Recent submission ids with most recent at the top/beginning.")
 
 (defvar ideone-lang-mode-alist
-  '(("C" . c-mode)
-    ("C99" . c-mode)
+  '(("C99" . c-mode)
     ("C99 strict" . c-mode)
-    ("C++" . c++-mode)
+    ("C" . c-mode)
     ("C++0x" . c++-mode)
+    ("C++" . c++-mode)
     ("python" . python-mode)
     ("lisp" . lisp-mode)
-    ("text" . text-mode))
-  "Mapping of identifiers to their emacs mode.")
+    ("text" . text-mode)
+    ("Assembler" . asm-mode)
+    ("AWK" . awk-mode)
+    ("Bash" . sh-mode)
+    ("Common Lisp" . common-lisp-mode)
+    ("Java" . java-mode)
+    ("JavaScript" . javascript-mode)
+    ("Pascal" . pascal-mode)
+    ("Perl" . perl-mode)
+    ("Objective-C" . objc-mode)
+    ("Prolog" . prolog.mode)
+    ("R" . r-mode)
+    ("Ruby" . ruby-mode)
+    ("Scheme" . scheme-mode)
+    ("SQL" . sql-mode)
+    ("Tcl" . tcl-mode)
+    ("Whitespace" . text-mode))
 
-(setq ideone-header-end "$$$IDEONE_HEADER_END$$$")
+  "Mapping of language identifiers to their emacs mode.  Note,
+  the order *IS* important here!  It's hack-ish to prefer C++0x
+  over C++ and C99 over C.  This solves the reserve lookup
+  problem so we don't have to search the ideone language strings
+  for \"C\" and pray we get the C, gcc compiler tag (C99 is easy
+  to find).")
 
+(defvar ideone-header-end "$$$IDEONE_HEADER_END$$$"
+
+  "String describing a tag we stick in the paste to easily find
+  the end of the IDEone header; this way, we can modify a paste
+  and resubmit without submitting the previous headers.")
+
+;; TODO: these are unused currently...
 (setq ideone-status-alist '((-1 . "waiting")
 			    ( 0 . "done")
 			    ( 1 . "compiling")
@@ -102,22 +129,10 @@ Should set to a pattern like C++, C99, Scheme, Python, etc.")
 			   (cannot_submit_this_month_anymore . "LIMIT")))
 
 (defun ideone-enable-debug ()
+  "Turn on debugging for Emacs and SOAP for backtraces if
+problems should occur."
   (setq debug-on-error t)
   (setq soap-debug t))
-;;(ideone-enable-debug)
-
-;; (setq ideone-supported-languages 
-;;       (soap-invoke ideone-wsdl "Ideone_Service_v1Port" "getLanguages" 
-;; 		   "terranpro" "capp1234"))
-
-
-
-;; (setq ideone-languages (cdr (car (cdr (car ideone-supported-languages)))))
-;; (rassoc "" ideone-languages)
-;; (setq ideone-lang-rdy (car ideone-languages))
-;; (pop ideone-lang-rdy)
-;; (mapcar 'convert-pair (cdr (car ideone-languages)))
-;; (setq ideone-lang-alist (mapcar 'convert-pair ideone-lang-rdy))
 
 (defun convert-pair (pair) `(,(cdr (third pair)) . ,(cdr (second
 							  pair))))
@@ -127,10 +142,9 @@ Should set to a pattern like C++, C99, Scheme, Python, etc.")
 	collect (cons (cdr (assoc key-field element))
 		      (cdr (assoc value-field element)))))
 
-;;(convert-soap (car ideone-supported-languages) 'key 'value)
-
-
 (defun ideone-invoke (cmd &rest args)
+  "Wrapper function around `soap-invoke' which sends an IDEone
+command."
   (car (apply 'soap-invoke 
 	      ideone-wsdl 
 	      "Ideone_Service_v1Port" 
@@ -140,6 +154,8 @@ Should set to a pattern like C++, C99, Scheme, Python, etc.")
 	      args)))
 
 (defun ideone-check-error (response)
+  "Intended to check for errors from command responses; TODO.
+Not used yet beyond the languages command."
   (let* ((error-fields response)
 	 (name (cdr (first (car error-fields))))
 	 (status (cdr (second (car error-fields))))
@@ -147,6 +163,8 @@ Should set to a pattern like C++, C99, Scheme, Python, etc.")
     `(,name . ,status)))
 
 (defun ideone-conv-languages-alist (response)
+  "Scan a SOAP response until we find the languages section.
+HACKISH.  TODO fix later."
   (let* ((language-fields))
     (while (and (not (rassoc "languages" (car (car response))))
 		(not (eq (length response) 0)))
@@ -155,42 +173,36 @@ Should set to a pattern like C++, C99, Scheme, Python, etc.")
     (setq languages-fields (car (car response)))
 ))
 
-;;(length (car ideone-supported-languages))
-;;(ideone-conv-languages-alist ideone-supported-languages)
-
-;; (setq ideone-temp ideone-supported-languages)
-;; (pop (car ideone-temp))
-;; (cdr (second (car (car ideone-supported-languages))))
-
-;; (rassoc "error"  (car (car ideone-supported-languages)))
-
-;; (cdr (rassoc (cdr (ideone-check-error ideone-supported-languages)) 
-;; 	 ideone-error-alist))
-
-
-;;(ideone-check-error (list (ideone-invoke "getLanguages")))
-;;(ideone-get-languages)
 (defun ideone-parse-simple (response)
+  "Parse a simple response (non-recursive) into a simple alist of
+the form (param . value).  For example (\"response\" . \"OK\")."
+
   (mapcar '(lambda (pair)
 	     `(,(cdr (first pair)) . ,(cdr (second pair)))) 
 	  response))
 
 (defun ideone-parse-languages (response)
+  "Parse a complex, languages response (recursive) into a simple
+alist.  Similar to `ideone-parse-simple'."
   (let ((languages (cdr (second (car (cdr response))))))
     (mapcar 'convert-pair languages)))
 
-;; Scratchpad testing for parsing this !@#$ing languages recursive alist
-;;(cdr (second (car (cdr (ideone-invoke "getLanguages")))))
-;;(mapcar 'convert-pair (cdr (car (cdr (second (car ideone-supported-languages))))))
-;;(ideone-parse-languages (car ideone-supported-languages))
-
 (defun ideone-value-from-presponse (presponse key)
+  "Grab the value for KEY of parsed response, PRESPONSE."
   (let ((value)) 
     (loop for pair in presponse
 	  do (if (string-match key (car pair))
 		 (setq value (cdr pair)))
 	  finally return value))
 )
+
+(defun ideone-trim-lang-response (lresponse)
+  "Trim the language response to include only the first word, and 
+exclude anything in parentheses, compilers, etc."
+
+  (let ((regexp "\\(\\w+[+-]*\\w*\\)"))
+    (if (string-match regexp lresponse)
+	(match-string 1 lresponse))))
 
 (defun ideone-show-output-source (presponse)
   "Show output of a parsed response, PRESPONSE, in a temporary
@@ -199,7 +211,8 @@ the user to modify, with the remainder of the response
 fields (errors, output, time, etc.) in a commented region."
 
   (let* ((buffer "*IDEone*")
-	 (lang (ideone-value-from-presponse presponse "langName"))
+	 (lang (ideone-trim-lang-response 
+		(ideone-value-from-presponse presponse "langName")))
 	 (lang-mode (or (aget ideone-lang-mode-alist lang)
 			nil))
 	 (time (ideone-value-from-presponse presponse "time"))
@@ -246,6 +259,9 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
   t)
 
 (defun ideone-get-languages ()
+  "Invoke the getLanguages command and parse the response,
+sending it to the variable, `ideone-languages-alist'."
+
   (let ((languages-response (ideone-invoke "getLanguages")))
     (ideone-check-error languages-response)
     (setq ideone-languages-alist (ideone-parse-languages languages-response))))
@@ -254,12 +270,18 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
 ;;(ideone-show-output ideone-result)
 
 (defun ideone-get-lang-code-from-string (s)
+  "Match a string in `ideone-languages-alist' to find the numeric
+code used for submission."
+
   (assoc-default (regexp-quote s) ideone-languages-alist
 		 '(lambda (elem key)
 		    (cond ((not (stringp elem)) nil)
 			  ((string-match key elem) t)))))
 
 (defun ideone-guess-language ()
+  "Using the major mode, make a guess at the submission language,
+and thereby the numeric code used for submission."
+
   (let ((lang)
 	(code))
     (setq lang (case major-mode
@@ -270,6 +292,12 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
   )
 
 (defun ideone-create-submission ()
+  "Create a submission using the current buffer or the active
+region of the current buffer.  The submission language, if not
+set by `ideone-set-submission-lang' will be guessed using the
+major-mode.  Compilation is enabled by default.  TODO: Work with
+input (stdin) to the submission."
+
   (interactive)
   (let* ((end (if (use-region-p)
 		  (region-end)
@@ -312,20 +340,19 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
       (kill-ring-save (point-min) (point-max)))
     link))
 
-;; (cond ( (null ideone-submit-lang) "Hi")
-;;       (t "Bye"))
-
-;;(setq ideone-result '(("error" . "OK") ("link" . "Td2NC")))
-
-;;(cdr (assoc "status" (ideone-parse-simple (ideone-submission-status "Td2NC"))))
-
 (defun ideone-submission-status (id) 
+  "Grab the submission status for snippet ID and return the
+numeric code."
+
   (let ((result (ideone-invoke "getSubmissionStatus" 
 					   id)))
     (ideone-show-output result)
     (cdr (assoc "status" (ideone-parse-simple result)))))
 
 (defun ideone-submission-details (id)
+  "Grab the submission details for snippet ID, parse it, and
+display the details in a separate buffer."
+
   (let ((result (ideone-invoke "getSubmissionDetails" 
 					   id
 					   t
@@ -343,6 +370,8 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
 ;;   (cdr (assoc key alist)))
 
 (defun ideone-id-from-url (url)
+  "Grab the ID part of an IDEone url, URL."
+
   (let ((id-regexp "ideone.com/\\([\w\d0-9A-Za-z]*\\)"))
     (string-match id-regexp url)
     (match-string 1 url)))
@@ -350,6 +379,11 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
 ;;(ideone-id-from-url "http://ideone.com/45AzL")
 
 (defun ideone-get-submission ()
+  "Grab a submission either by an IDEone URL at point, or by
+using a completing read from the user.  The completing read uses
+the recent submissions lists, and can be of the form
+http://ideone.com/ID or ID."
+
   (interactive)
   (let ((url (thing-at-point-url-at-point))
 	(link))
@@ -365,6 +399,10 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
     (ideone-submission-details link)))
 
 (defun ideone-init ()
+  "Invoke the test function to make sure our credentials are
+accepted, and then grab and parse the languages into
+`ideone-languages-alist'."
+
   (if (not (string=  (aget (ideone-parse-simple (ideone-invoke "testFunction"))
 			   "error")
 		     "OK"))
@@ -372,6 +410,12 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
   (ideone-get-languages) t)
 
 (defun ideone-set-submission-lang ()
+  "Manually set (force) a submission language.  This is useful
+for situations where guessing does not choose the correct
+submission type; this could include selecting the correct
+compiler (C++: standard vs c++11 or ASM: nasm vs gcc).  TODO:
+Make this buffer local later!"
+
   (interactive)
   (setq ideone-submit-lang 
 	(ido-completing-read "Submission Language: " 
@@ -389,6 +433,7 @@ PRESPONSE should have been parsed with something like `ideone-parse-simple'."
 ;; (add-hook 'find-file-hook 'ideone-hook)
 ;; (add-hook 'c-mode-common-hook 'ideone-hook)
 
+;; Hacked global keymap.  TODO: finesse later
 (global-set-key (kbd "C-c I s") 'ideone-create-submission)
 (global-set-key (kbd "C-c I l") 'ideone-set-submission-lang)
 (global-set-key (kbd "C-c I g") 'ideone-get-submission)
