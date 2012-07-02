@@ -38,6 +38,8 @@
 (load-library "soap-client")
 (load-library "soap-inspect")
 (require 'ido)
+(require 'assoc)
+(require 'cl)
 
 ;;(setq ideone-wsdl-url "http://ideone.com/api/1/service.wsdl")
 ;;(setq ideone-wsdl (soap-load-wsdl-from-url ideone-wsdl-url))
